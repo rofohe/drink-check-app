@@ -4,4 +4,4 @@ streamlit
 langdetect
 gspread 
 google-auth
-googleapiclient
+google-api-python-client
