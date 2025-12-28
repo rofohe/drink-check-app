@@ -1,0 +1,6 @@
+pytesseract
+pillow
+streamlit
+langdetect
+gspread 
+google-auth
