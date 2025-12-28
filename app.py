@@ -1,39 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[4]:
-
-
-#pip install pytesseract
-
-
-# In[3]:
-
-
-#pip install pillow
-
-
-# In[7]:
-
-
-#pip install streamlit
-
-
-# In[10]:
-
-
-#pip install langdetect
-
-
-# In[13]:
-
-
-#pip install gspread google-auth
-
-
-# In[14]:
-
-
 import streamlit as st
 from datetime import datetime
 from PIL import Image
