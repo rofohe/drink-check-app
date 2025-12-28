@@ -150,7 +150,7 @@ if beverage == "Beer":
     beer_vals = (
         st.slider("Taste quality", 1, 7, 4),
         st.slider("Aftertaste", 1, 7, 4),
-        st.slider("Carbonation", 1, 7, 4),
+        st.slider("Carbonation quality", 1, 7, 4),
         st.slider("Overall", 1, 7, 4)
     )
 
