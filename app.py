@@ -40,7 +40,7 @@ def get_clients():
     drive = build("drive", "v3", credentials=creds)
     sheet = gs.open_by_url(
         "https://docs.google.com/spreadsheets/d/1JHcRPvNsl7og23GT-0AKNmoyD8BwFPP0UB_myJsvBcg"
-    ).worksheet("label_db")
+    ).worksheet("drink")
     return sheet, drive
 
 def upload_image_to_drive(image, drive_service):
