@@ -34,13 +34,6 @@ if "image_bytes" not in st.session_state:
     st.session_state.image_bytes = None
 
 # --------------------------------------------------
-# Reset helper
-# --------------------------------------------------
-def reset_form():
-    st.session_state.clear()
-    st.rerun()
-
-# --------------------------------------------------
 # Google helpers
 # --------------------------------------------------
 SCOPES = [
@@ -60,19 +53,15 @@ def get_clients():
     ).worksheet("drink")
     return sheet, drive
 
-def upload_image_to_drive(image, drive_service):
-    buf = io.BytesIO()
-    image.save(buf, format="JPEG")
-    buf.seek(0)
-
-    file_metadata = {
-        "name": f"label_{datetime.now().isoformat()}.jpg",
-        "mimeType": "image/jpeg"
-    }
-
+def upload_image_to_drive(image_bytes, drive_service):
+    buf = io.BytesIO(image_bytes)
     media = MediaIoBaseUpload(buf, mimetype="image/jpeg")
+
     file = drive_service.files().create(
-        body=file_metadata,
+        body={
+            "name": f"label_{datetime.now().isoformat()}.jpg",
+            "mimeType": "image/jpeg"
+        },
         media_body=media,
         fields="id"
     ).execute()
@@ -85,26 +74,12 @@ def upload_image_to_drive(image, drive_service):
     return f"https://drive.google.com/uc?id={file['id']}"
 
 # --------------------------------------------------
-# Cached image decoding
-# --------------------------------------------------
-@st.cache_data(show_spinner=False)
-def decode_image(file_bytes: bytes, is_heic: bool) -> Image.Image:
-    if is_heic:
-        heif = pillow_heif.read_heif(file_bytes)
-        img = Image.frombytes(
-            heif.mode, heif.size, heif.data, "raw"
-        )
-    else:
-        img = Image.open(io.BytesIO(file_bytes))
-
-    return ImageOps.exif_transpose(img)
-
-# --------------------------------------------------
-# OCR helper (cached)
+# OCR helpers (SAFE TO CACHE)
 # --------------------------------------------------
 @st.cache_data(show_spinner=True)
 def ocr_best_rotation(image_bytes: bytes, lang: str) -> str:
     image = Image.open(io.BytesIO(image_bytes))
+
     best_text = ""
     best_len = 0
 
@@ -141,20 +116,32 @@ country = st.text_input("Country")
 postal_code = st.text_input("Postal code")
 language_choice = st.selectbox("Label language", list(language_map.keys()))
 
-image = None
-
+# --------------------------------------------------
+# Image handling (decode once!)
+# --------------------------------------------------
 if uploaded_image:
-    file_bytes = uploaded_image.read()
-    is_heic = uploaded_image.name.lower().endswith(".heic")
+    if uploaded_image.name.lower().endswith(".heic"):
+        heif = pillow_heif.read_heif(uploaded_image)
+        image = Image.frombytes(heif.mode, heif.size, heif.data)
+    else:
+        image = Image.open(uploaded_image)
 
-    image = decode_image(file_bytes, is_heic)
+    image = ImageOps.exif_transpose(image)
+
+    # Convert to JPEG bytes ONCE
+    buf = io.BytesIO()
+    image.save(buf, format="JPEG")
+    st.session_state.image_bytes = buf.getvalue()
+
     st.image(image, use_container_width=True)
 
-    st.session_state.image_bytes = file_bytes
-
+# --------------------------------------------------
+# OCR trigger (NO AUTO-RERUN)
+# --------------------------------------------------
+if st.session_state.image_bytes:
     if st.button("Run OCR (best effort)"):
         st.session_state.ocr_text = ocr_best_rotation(
-            file_bytes,
+            st.session_state.image_bytes,
             language_map[language_choice]
         )
 
@@ -173,7 +160,6 @@ alcohol_percent = st.number_input("Alcohol %", 0.0, 25.0, step=0.1)
 # Ingredients
 # --------------------------------------------------
 st.subheader("Ingredients")
-
 ing_water = st.checkbox("Brauwasser")
 ing_hops = st.checkbox("Hopfen")
 ing_malt = st.checkbox("Gerstenmalz")
@@ -202,10 +188,7 @@ beer_bitterness = ""
 beer_vals = wine_vals = ("", "", "", "")
 
 if beverage == "Beer":
-    beer_color = st.selectbox(
-        "Beer color",
-        ["pale", "gold", "orange", "brown", "black"]
-    )
+    beer_color = st.selectbox("Beer color", ["pale", "gold", "orange", "brown", "black"])
     beer_bitterness = st.slider("Sweet ↔ Bitter", 1, 7, 4)
     beer_vals = (
         st.slider("Taste quality", 1, 7, 4),
@@ -233,8 +216,10 @@ if st.button("Save to database"):
             sheet, drive = get_clients()
 
             image_url = ""
-            if image:
-                image_url = upload_image_to_drive(image, drive)
+            if st.session_state.image_bytes:
+                image_url = upload_image_to_drive(
+                    st.session_state.image_bytes, drive
+                )
 
             sheet.append_row([
                 datetime.now().isoformat(),
@@ -263,7 +248,9 @@ if st.button("Save to database"):
             ])
 
             st.success("Saved successfully ✅")
-            st.button("Clear form", on_click=reset_form)
+
+            st.session_state.clear()
+            st.rerun()
 
         except Exception as e:
             st.error(f"Save failed: {e}")
