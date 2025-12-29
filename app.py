@@ -4,7 +4,7 @@
 
 import streamlit as st
 from datetime import datetime
-from PIL import Image
+from PIL import Image, ImageOps
 import pytesseract
 import gspread
 from google.oauth2.service_account import Credentials
@@ -60,13 +60,33 @@ def upload_image_to_drive(image, drive_service):
         fields="id"
     ).execute()
 
-    # Make public
     drive_service.permissions().create(
         fileId=file["id"],
         body={"type": "anyone", "role": "reader"}
     ).execute()
 
     return f"https://drive.google.com/uc?id={file['id']}"
+
+# --------------------------------------------------
+# OCR helpers
+# --------------------------------------------------
+def ocr_best_rotation(image, lang):
+    """
+    Try OCR at multiple rotations and keep the most informative result
+    """
+    best_text = ""
+    best_len = 0
+
+    for angle in [0, 90, 180, 270]:
+        rotated = image.rotate(angle, expand=True)
+        text = pytesseract.image_to_string(rotated, lang=lang)
+        clean_len = len(text.strip())
+
+        if clean_len > best_len:
+            best_len = clean_len
+            best_text = text
+
+    return best_text
 
 # --------------------------------------------------
 # Beverage type
@@ -92,15 +112,16 @@ ocr_text = ""
 
 if uploaded_image:
     image = Image.open(uploaded_image)
+    image = ImageOps.exif_transpose(image)  # 🔑 fix orientation
     st.image(image, use_container_width=True)
 
     if st.checkbox("Run OCR (best effort)"):
-        with st.spinner("Running OCR…"):
-            ocr_text = pytesseract.image_to_string(
-                image,
+        with st.spinner("Running OCR (trying rotations)…"):
+            ocr_text = ocr_best_rotation(
+                image=image,
                 lang=language_map[language_choice]
             )
-        st.text_area("OCR result", ocr_text, height=120)
+        st.text_area("OCR result", ocr_text, height=150)
 
 # --------------------------------------------------
 # Core info
