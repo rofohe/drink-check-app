@@ -61,6 +61,7 @@ def upload_image_to_drive(image, drive_service):
         fields="id"
     ).execute()
 
+    # Make public
     drive_service.permissions().create(
         fileId=file["id"],
         body={"type": "anyone", "role": "reader"}
@@ -72,18 +73,15 @@ def upload_image_to_drive(image, drive_service):
 # OCR helpers
 # --------------------------------------------------
 def ocr_best_rotation(image: Image.Image, lang: str) -> str:
-    """
-    Try OCR at multiple rotations and keep the most informative result
-    """
     best_text = ""
     best_len = 0
-
     for angle in [0, 90, 180, 270]:
         rotated = image.rotate(angle, expand=True)
         text = pytesseract.image_to_string(rotated, lang=lang)
-        if len(text.strip()) > best_len:
+        clean_len = len(text.strip())
+        if clean_len > best_len:
+            best_len = clean_len
             best_text = text
-            best_len = len(text.strip())
     return best_text
 
 # --------------------------------------------------
@@ -110,21 +108,20 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    file_bytes = uploaded_file.read()
-    st.session_state.uploaded_image_bytes = file_bytes
+    st.session_state.uploaded_image_bytes = uploaded_file.read()
 
     if uploaded_file.name.lower().endswith(".heic"):
-        heif = pillow_heif.read_heif(io.BytesIO(file_bytes))
-        image = Image.frombytes(heif.mode, heif.size, heif.data, "raw")
+        heif_file = pillow_heif.read_heif(io.BytesIO(st.session_state.uploaded_image_bytes))
+        image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
     else:
-        image = Image.open(io.BytesIO(file_bytes))
+        image = Image.open(io.BytesIO(st.session_state.uploaded_image_bytes))
 
     image = ImageOps.exif_transpose(image)
     st.image(image, use_container_width=True)
 
     if st.checkbox("Run OCR (best effort)"):
         with st.spinner("Running OCR (trying rotations)…"):
-            st.session_state.ocr_text = ocr_best_rotation(image, lang="eng")  # default lang
+            st.session_state.ocr_text = ocr_best_rotation(image, lang="eng")
         st.text_area("OCR result", st.session_state.ocr_text, height=150)
 
 # --------------------------------------------------
@@ -169,7 +166,6 @@ location = st.text_input("Purchase location")
 # Ratings
 # --------------------------------------------------
 st.subheader("Ratings")
-
 beer_color = ""
 beer_bitterness = ""
 beer_vals = wine_vals = ("", "", "", "")
@@ -206,8 +202,8 @@ def save_to_sheet():
         image_url = ""
         if st.session_state.uploaded_image_bytes:
             if uploaded_file.name.lower().endswith(".heic"):
-                heif = pillow_heif.read_heif(io.BytesIO(st.session_state.uploaded_image_bytes))
-                image = Image.frombytes(heif.mode, heif.size, heif.data, "raw")
+                heif_file = pillow_heif.read_heif(io.BytesIO(st.session_state.uploaded_image_bytes))
+                image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw")
             else:
                 image = Image.open(io.BytesIO(st.session_state.uploaded_image_bytes))
             image = ImageOps.exif_transpose(image)
@@ -249,7 +245,7 @@ def clear_form():
     st.session_state.uploaded_image_bytes = None
     st.session_state.ocr_text = ""
     st.session_state.saved_flag = False
-    st.experimental_rerun()  # fully clears widgets
+    st.experimental_rerun()
 
 st.button("Save to database", on_click=save_to_sheet)
 
