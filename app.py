@@ -25,11 +25,12 @@ st.set_page_config(
 st.title("🍾 Beverage Label Logger")
 
 # --------------------------------------------------
-# Session state reset helper
+# Session helpers
 # --------------------------------------------------
 def reset_form():
     for k in list(st.session_state.keys()):
         del st.session_state[k]
+    st.rerun()
 
 # --------------------------------------------------
 # Google helpers
@@ -76,9 +77,27 @@ def upload_image_to_drive(image, drive_service):
     return f"https://drive.google.com/uc?id={file['id']}"
 
 # --------------------------------------------------
-# OCR helpers
+# Cached image decoding (CRITICAL)
 # --------------------------------------------------
-def ocr_best_rotation(image, lang):
+@st.cache_data(show_spinner=False)
+def load_image(file_bytes: bytes, filename: str) -> Image.Image:
+    if filename.lower().endswith(".heic"):
+        heif = pillow_heif.read_heif(file_bytes)
+        image = Image.frombytes(
+            heif.mode, heif.size, heif.data, "raw"
+        )
+    else:
+        image = Image.open(io.BytesIO(file_bytes))
+
+    return ImageOps.exif_transpose(image)
+
+# --------------------------------------------------
+# Cached OCR
+# --------------------------------------------------
+@st.cache_data(show_spinner=True)
+def ocr_best_rotation(image_bytes: bytes, lang: str) -> str:
+    image = Image.open(io.BytesIO(image_bytes))
+
     best_text = ""
     best_len = 0
 
@@ -115,28 +134,30 @@ country = st.text_input("Country")
 postal_code = st.text_input("Postal code")
 language_choice = st.selectbox("Label language", list(language_map.keys()))
 
-ocr_text = ""
-image = None
-
 if uploaded_image:
-    if uploaded_image.name.lower().endswith(".heic"):
-        heif = pillow_heif.read_heif(uploaded_image)
-        image = Image.frombytes(
-            heif.mode, heif.size, heif.data, "raw"
-        )
-    else:
-        image = Image.open(uploaded_image)
+    if "image_bytes" not in st.session_state:
+        st.session_state.image_bytes = uploaded_image.getvalue()
+        st.session_state.filename = uploaded_image.name
 
-    image = ImageOps.exif_transpose(image)
+    image = load_image(
+        st.session_state.image_bytes,
+        st.session_state.filename
+    )
+
     st.image(image, use_container_width=True)
 
-    if st.checkbox("Run OCR (best effort)"):
-        with st.spinner("Running OCR (trying rotations)…"):
-            ocr_text = ocr_best_rotation(
-                image=image,
-                lang=language_map[language_choice]
-            )
-        st.text_area("OCR result", ocr_text, height=150)
+    if st.button("Run OCR (best effort)"):
+        st.session_state.ocr_text = ocr_best_rotation(
+            st.session_state.image_bytes,
+            language_map[language_choice]
+        )
+
+if "ocr_text" in st.session_state:
+    st.text_area(
+        "OCR result",
+        st.session_state.ocr_text,
+        height=150
+    )
 
 # --------------------------------------------------
 # Core info
@@ -215,8 +236,9 @@ if st.button("Save to database"):
             sheet, drive = get_clients()
 
             image_url = ""
-            if image:
-                image_url = upload_image_to_drive(image, drive)
+            if "image_bytes" in st.session_state:
+                img = Image.open(io.BytesIO(st.session_state.image_bytes))
+                image_url = upload_image_to_drive(img, drive)
 
             sheet.append_row([
                 datetime.now().isoformat(),
@@ -241,11 +263,10 @@ if st.button("Save to database"):
                 *beer_vals,
                 *wine_vals,
                 image_url,
-                ocr_text
+                st.session_state.get("ocr_text", "")
             ])
 
             st.success("Saved successfully ✅")
-
             st.button("Clear form for next entry", on_click=reset_form)
 
         except Exception as e:
