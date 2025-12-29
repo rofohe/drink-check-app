@@ -100,6 +100,20 @@ if "saved_flag" not in st.session_state:
 beverage = st.radio("Select beverage type", ["Beer", "Wine"])
 
 # --------------------------------------------------
+# Country & Language (before OCR)
+# --------------------------------------------------
+country = st.text_input("Country")
+postal_code = st.text_input("Postal code")
+language_choice = st.selectbox("Label language", ["English", "German", "French", "Spanish"])
+
+language_map = {
+    "English": "eng",
+    "German": "deu",
+    "French": "fra",
+    "Spanish": "spa"
+}
+
+# --------------------------------------------------
 # Image upload
 # --------------------------------------------------
 uploaded_file = st.file_uploader(
@@ -120,21 +134,17 @@ if uploaded_file:
     st.image(image, use_container_width=True)
 
     if st.checkbox("Run OCR (best effort)"):
-        with st.spinner("Running OCR (trying rotations)…"):
-            st.session_state.ocr_text = ocr_best_rotation(image, lang="eng")
+        with st.spinner("Running OCR…"):
+            st.session_state.ocr_text = ocr_best_rotation(image, lang=language_map[language_choice])
         st.text_area("OCR result", st.session_state.ocr_text, height=150)
 
 # --------------------------------------------------
-# Label info
+# Core info
 # --------------------------------------------------
 brand = st.text_input("Brand")
 sortiment = st.text_input("Sortiment / Style")
 description = st.text_area("Describe the beverage")
 alcohol_percent = st.number_input("Alcohol %", 0.0, 25.0, step=0.1)
-
-country = st.text_input("Country")
-postal_code = st.text_input("Postal code")
-language_choice = st.selectbox("Label language", ["English", "German", "French", "Spanish"])
 
 # --------------------------------------------------
 # Ingredients
