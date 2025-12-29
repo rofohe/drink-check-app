@@ -5,6 +5,7 @@
 import streamlit as st
 from datetime import datetime
 from PIL import Image, ImageOps
+import pillow_heif
 import pytesseract
 import gspread
 from google.oauth2.service_account import Credentials
@@ -22,6 +23,13 @@ st.set_page_config(
 )
 
 st.title("🍾 Beverage Label Logger")
+
+# --------------------------------------------------
+# Session state reset helper
+# --------------------------------------------------
+def reset_form():
+    for k in list(st.session_state.keys()):
+        del st.session_state[k]
 
 # --------------------------------------------------
 # Google helpers
@@ -45,15 +53,15 @@ def get_clients():
 
 def upload_image_to_drive(image, drive_service):
     buf = io.BytesIO()
-    image.save(buf, format="PNG")
+    image.save(buf, format="JPEG")
     buf.seek(0)
 
     file_metadata = {
-        "name": f"label_{datetime.now().isoformat()}.png",
-        "mimeType": "image/png"
+        "name": f"label_{datetime.now().isoformat()}.jpg",
+        "mimeType": "image/jpeg"
     }
 
-    media = MediaIoBaseUpload(buf, mimetype="image/png")
+    media = MediaIoBaseUpload(buf, mimetype="image/jpeg")
     file = drive_service.files().create(
         body=file_metadata,
         media_body=media,
@@ -71,20 +79,15 @@ def upload_image_to_drive(image, drive_service):
 # OCR helpers
 # --------------------------------------------------
 def ocr_best_rotation(image, lang):
-    """
-    Try OCR at multiple rotations and keep the most informative result
-    """
     best_text = ""
     best_len = 0
 
     for angle in [0, 90, 180, 270]:
         rotated = image.rotate(angle, expand=True)
         text = pytesseract.image_to_string(rotated, lang=lang)
-        clean_len = len(text.strip())
-
-        if clean_len > best_len:
-            best_len = clean_len
+        if len(text.strip()) > best_len:
             best_text = text
+            best_len = len(text.strip())
 
     return best_text
 
@@ -94,9 +97,12 @@ def ocr_best_rotation(image, lang):
 beverage = st.radio("Select beverage type", ["Beer", "Wine"])
 
 # --------------------------------------------------
-# Image upload + OCR language choice
+# Image upload + OCR
 # --------------------------------------------------
-uploaded_image = st.file_uploader("Upload label image (optional)", ["jpg", "jpeg", "png"])
+uploaded_image = st.file_uploader(
+    "Upload label image (optional)",
+    ["jpg", "jpeg", "png", "heic"]
+)
 
 language_map = {
     "English": "eng",
@@ -106,13 +112,22 @@ language_map = {
 }
 
 country = st.text_input("Country")
+postal_code = st.text_input("Postal code")
 language_choice = st.selectbox("Label language", list(language_map.keys()))
 
 ocr_text = ""
+image = None
 
 if uploaded_image:
-    image = Image.open(uploaded_image)
-    image = ImageOps.exif_transpose(image)  # 🔑 fix orientation
+    if uploaded_image.name.lower().endswith(".heic"):
+        heif = pillow_heif.read_heif(uploaded_image)
+        image = Image.frombytes(
+            heif.mode, heif.size, heif.data, "raw"
+        )
+    else:
+        image = Image.open(uploaded_image)
+
+    image = ImageOps.exif_transpose(image)
     st.image(image, use_container_width=True)
 
     if st.checkbox("Run OCR (best effort)"):
@@ -129,7 +144,6 @@ if uploaded_image:
 brand = st.text_input("Brand")
 sortiment = st.text_input("Sortiment / Style")
 description = st.text_area("Describe the beverage")
-
 alcohol_percent = st.number_input("Alcohol %", 0.0, 25.0, step=0.1)
 
 # --------------------------------------------------
@@ -165,9 +179,16 @@ location = st.text_input("Purchase location")
 # --------------------------------------------------
 st.subheader("Ratings")
 
+beer_color = ""
+beer_bitterness = ""
 beer_vals = wine_vals = ("", "", "", "")
 
 if beverage == "Beer":
+    beer_color = st.selectbox(
+        "Beer color",
+        ["pale", "gold", "orange", "brown", "black"]
+    )
+    beer_bitterness = st.slider("Sweet ↔ Bitter", 1, 7, 4)
     beer_vals = (
         st.slider("Taste quality", 1, 7, 4),
         st.slider("Aftertaste", 1, 7, 4),
@@ -194,7 +215,7 @@ if st.button("Save to database"):
             sheet, drive = get_clients()
 
             image_url = ""
-            if uploaded_image:
+            if image:
                 image_url = upload_image_to_drive(image, drive)
 
             sheet.append_row([
@@ -203,6 +224,7 @@ if st.button("Save to database"):
                 brand,
                 sortiment,
                 country,
+                postal_code,
                 language_choice,
                 description,
                 alcohol_percent,
@@ -214,6 +236,8 @@ if st.button("Save to database"):
                 cal_kcal,
                 price,
                 location,
+                beer_color,
+                beer_bitterness,
                 *beer_vals,
                 *wine_vals,
                 image_url,
@@ -221,5 +245,8 @@ if st.button("Save to database"):
             ])
 
             st.success("Saved successfully ✅")
+
+            st.button("Clear form for next entry", on_click=reset_form)
+
         except Exception as e:
             st.error(f"Save failed: {e}")
