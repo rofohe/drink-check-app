@@ -218,10 +218,10 @@ def save_to_sheet():
                 image = Image.open(io.BytesIO(st.session_state.uploaded_image_bytes))
             image = ImageOps.exif_transpose(image)
             image_url = upload_image_to_drive(image, drive)
-
+    
         sheet.append_row([
-            datetime.now().isoformat(),
-            beverage,
+            datetime.now().isoformat(),     # date
+            beverage,                       # beverage_type
             brand,
             sortiment,
             country,
@@ -237,13 +237,24 @@ def save_to_sheet():
             cal_kcal,
             price,
             location,
-            beer_color,
-            beer_bitterness,
-            *beer_vals,
-            *wine_vals,
-            image_url,
-            st.session_state.ocr_text
+        
+            # --- Beer ratings ---
+            beer_vals[0] if beverage == "Beer" else "",
+            beer_vals[1] if beverage == "Beer" else "",
+            beer_vals[2] if beverage == "Beer" else "",
+            beer_vals[3] if beverage == "Beer" else "",
+        
+            # --- Wine ratings ---
+            wine_vals[0] if beverage == "Wine" else "",
+            wine_vals[1] if beverage == "Wine" else "",
+            wine_vals[2] if beverage == "Wine" else "",
+            wine_vals[3] if beverage == "Wine" else "",
+        
+            image_url,                      # image_url
+            st.session_state.ocr_text,      # ocr_text
+            ""                               # image (intentionally empty)
         ])
+
 
         st.success("Saved successfully ✅")
         st.session_state.saved_flag = True
