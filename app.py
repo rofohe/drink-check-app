@@ -99,7 +99,7 @@ def ocr_best_rotation(image, lang):
 beverage = st.radio("Select beverage type", ["Beer", "Wine"])
 
 # --------------------------------------------------
-# Country & language FIRST
+# Country & language
 # --------------------------------------------------
 language_map = {
     "English": "eng",
@@ -109,6 +109,7 @@ language_map = {
 }
 
 country = st.text_input("Country")
+postal_code = st.text_input("Postal code")
 language_choice = st.selectbox("Label language", list(language_map.keys()))
 
 # --------------------------------------------------
@@ -136,7 +137,7 @@ if uploaded_image:
     st.image(image, use_container_width=True)
 
 # --------------------------------------------------
-# OCR (BUTTON — RUNS ONCE)
+# OCR (explicit button – runs once)
 # --------------------------------------------------
 if st.session_state.image is not None:
     if st.button("Run OCR"):
@@ -184,14 +185,16 @@ location = st.text_input("Purchase location")
 # --------------------------------------------------
 st.subheader("Ratings")
 
-beer_vals = wine_vals = ("", "", "", "")
+beer_vals = wine_vals = ()
 
 if beverage == "Beer":
     beer_vals = (
         st.slider("Taste quality", 1, 7, 4),
         st.slider("Aftertaste", 1, 7, 4),
         st.slider("Carbonation quality", 1, 7, 4),
-        st.slider("Overall", 1, 7, 4)
+        st.slider("Sweet ↔ Bitter", 1, 7, 4),
+        st.slider("Session ↔ Specialty", 1, 7, 4),
+        st.slider("Overall", 1, 7, 4),
     )
 
 if beverage == "Wine":
@@ -199,7 +202,7 @@ if beverage == "Wine":
         st.slider("Taste quality", 1, 7, 4),
         st.slider("Dry ↔ Sweet", 1, 7, 4),
         st.slider("Aftertaste", 1, 7, 4),
-        st.slider("Overall", 1, 7, 4)
+        st.slider("Overall", 1, 7, 4),
     )
 
 # --------------------------------------------------
@@ -222,6 +225,7 @@ if st.button("Save to database"):
                 brand,
                 sortiment,
                 country,
+                postal_code,
                 language_choice,
                 description,
                 alcohol_percent,
@@ -241,7 +245,7 @@ if st.button("Save to database"):
 
             st.success("Saved successfully ✅")
 
-            # reset OCR only after save
+            # Reset only after save
             st.session_state.ocr_text = ""
             st.session_state.image = None
 
