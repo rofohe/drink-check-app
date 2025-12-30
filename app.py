@@ -1,3 +1,6 @@
+# --------------------------------------------------
+# label_app.py
+# --------------------------------------------------
 
 import streamlit as st
 from datetime import datetime
@@ -6,17 +9,65 @@ from PIL import Image, ImageOps
 import pytesseract
 import gspread
 from google.oauth2.service_account import Credentials
-@@ -60,14 +60,34 @@
-fields="id"
-).execute()
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
+
+# --------------------------------------------------
+# Page config
+# --------------------------------------------------
+st.set_page_config(
+    page_title="Beverage Label Logger",
+    page_icon="🍾",
+    layout="centered"
+)
+
+st.title("🍾 Beverage Label Logger")
+
+# --------------------------------------------------
+# Google helpers
+# --------------------------------------------------
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+def get_clients():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES
+    )
+    gs = gspread.authorize(creds)
+    drive = build("drive", "v3", credentials=creds)
+    sheet = gs.open_by_url(
+        "https://docs.google.com/spreadsheets/d/1JHcRPvNsl7og23GT-0AKNmoyD8BwFPP0UB_myJsvBcg"
+    ).worksheet("drink")
+    return sheet, drive
+
+def upload_image_to_drive(image, drive_service):
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    buf.seek(0)
+
+    file_metadata = {
+        "name": f"label_{datetime.now().isoformat()}.png",
+        "mimeType": "image/png"
+    }
+
+    media = MediaIoBaseUpload(buf, mimetype="image/png")
+    file = drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id"
+    ).execute()
 
     # Make public
-drive_service.permissions().create(
-fileId=file["id"],
-body={"type": "anyone", "role": "reader"}
-).execute()
+    drive_service.permissions().create(
+        fileId=file["id"],
+        body={"type": "anyone", "role": "reader"}
+    ).execute()
 
-return f"https://drive.google.com/uc?id={file['id']}"
+    return f"https://drive.google.com/uc?id={file['id']}"
 
 # --------------------------------------------------
 # OCR helpers
@@ -42,22 +93,39 @@ def ocr_best_rotation(image, lang):
 # --------------------------------------------------
 # Beverage type
 # --------------------------------------------------
-@@ -92,113 +112,114 @@
+beverage = st.radio("Select beverage type", ["Beer", "Wine"])
+
+# --------------------------------------------------
+# Image upload + OCR language choice
+# --------------------------------------------------
+uploaded_image = st.file_uploader("Upload label image (optional)", ["jpg", "jpeg", "png"])
+
+language_map = {
+    "English": "eng",
+    "German": "deu",
+    "French": "fra",
+    "Spanish": "spa"
+}
+
+country = st.text_input("Country")
+language_choice = st.selectbox("Label language", list(language_map.keys()))
+
+ocr_text = ""
 
 if uploaded_image:
-image = Image.open(uploaded_image)
+    image = Image.open(uploaded_image)
     image = ImageOps.exif_transpose(image)  # 🔑 fix orientation
-st.image(image, use_container_width=True)
+    st.image(image, use_container_width=True)
 
-if st.checkbox("Run OCR (best effort)"):
+    if st.checkbox("Run OCR (best effort)"):
         with st.spinner("Running OCR…"):
             ocr_text = pytesseract.image_to_string(
                 image,
         with st.spinner("Running OCR (trying rotations)…"):
             ocr_text = ocr_best_rotation(
                 image=image,
-lang=language_map[language_choice]
-)
+                lang=language_map[language_choice]
+            )
         st.text_area("OCR result", ocr_text, height=120)
         st.text_area("OCR result", ocr_text, height=150)
 
@@ -77,11 +145,11 @@ st.subheader("Ingredients")
 
 col1, col2, col3 = st.columns(3)
 with col1:
-ing_water = st.checkbox("Brauwasser")
+    ing_water = st.checkbox("Brauwasser")
 with col2:
-ing_hops = st.checkbox("Hopfen")
+    ing_hops = st.checkbox("Hopfen")
 with col3:
-ing_malt = st.checkbox("Gerstenmalz")
+    ing_malt = st.checkbox("Gerstenmalz")
 
 ing_other = st.text_input("Other ingredients")
 
@@ -106,58 +174,58 @@ st.subheader("Ratings")
 beer_vals = wine_vals = ("", "", "", "")
 
 if beverage == "Beer":
-beer_vals = (
-st.slider("Taste quality", 1, 7, 4),
-st.slider("Aftertaste", 1, 7, 4),
-st.slider("Carbonation quality", 1, 7, 4),
-st.slider("Overall", 1, 7, 4)
-)
+    beer_vals = (
+        st.slider("Taste quality", 1, 7, 4),
+        st.slider("Aftertaste", 1, 7, 4),
+        st.slider("Carbonation quality", 1, 7, 4),
+        st.slider("Overall", 1, 7, 4)
+    )
 
 if beverage == "Wine":
-wine_vals = (
-st.slider("Taste quality", 1, 7, 4),
-st.slider("Dry ↔ Sweet", 1, 7, 4),
-st.slider("Aftertaste", 1, 7, 4),
-st.slider("Overall", 1, 7, 4)
-)
+    wine_vals = (
+        st.slider("Taste quality", 1, 7, 4),
+        st.slider("Dry ↔ Sweet", 1, 7, 4),
+        st.slider("Aftertaste", 1, 7, 4),
+        st.slider("Overall", 1, 7, 4)
+    )
 
 # --------------------------------------------------
 # Save
 # --------------------------------------------------
 if st.button("Save to database"):
-if not brand:
-st.error("Brand is required")
-else:
-try:
-sheet, drive = get_clients()
+    if not brand:
+        st.error("Brand is required")
+    else:
+        try:
+            sheet, drive = get_clients()
 
-image_url = ""
-if uploaded_image:
-image_url = upload_image_to_drive(image, drive)
+            image_url = ""
+            if uploaded_image:
+                image_url = upload_image_to_drive(image, drive)
 
-sheet.append_row([
-datetime.now().isoformat(),
-beverage,
-brand,
-sortiment,
-country,
-language_choice,
-description,
-alcohol_percent,
-ing_water,
-ing_hops,
-ing_malt,
-ing_other,
-cal_kj,
-cal_kcal,
-price,
-location,
-*beer_vals,
-*wine_vals,
-image_url,
-ocr_text
-])
+            sheet.append_row([
+                datetime.now().isoformat(),
+                beverage,
+                brand,
+                sortiment,
+                country,
+                language_choice,
+                description,
+                alcohol_percent,
+                ing_water,
+                ing_hops,
+                ing_malt,
+                ing_other,
+                cal_kj,
+                cal_kcal,
+                price,
+                location,
+                *beer_vals,
+                *wine_vals,
+                image_url,
+                ocr_text
+            ])
 
-st.success("Saved successfully ✅")
-except Exception as e:
-st.error(f"Save failed: {e}")
+            st.success("Saved successfully ✅")
+        except Exception as e:
+            st.error(f"Save failed: {e}")
