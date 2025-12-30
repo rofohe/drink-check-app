@@ -4,7 +4,6 @@
 
 import streamlit as st
 from datetime import datetime
-from PIL import Image
 from PIL import Image, ImageOps
 import pytesseract
 import gspread
@@ -12,6 +11,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import io
+import pillow_heif  # ✅ NEW (HEIC support)
 
 # --------------------------------------------------
 # Page config
@@ -61,7 +61,6 @@ def upload_image_to_drive(image, drive_service):
         fields="id"
     ).execute()
 
-    # Make public
     drive_service.permissions().create(
         fileId=file["id"],
         body={"type": "anyone", "role": "reader"}
@@ -73,9 +72,6 @@ def upload_image_to_drive(image, drive_service):
 # OCR helpers
 # --------------------------------------------------
 def ocr_best_rotation(image, lang):
-    """
-    Try OCR at multiple rotations and keep the most informative result
-    """
     best_text = ""
     best_len = 0
 
@@ -98,7 +94,10 @@ beverage = st.radio("Select beverage type", ["Beer", "Wine"])
 # --------------------------------------------------
 # Image upload + OCR language choice
 # --------------------------------------------------
-uploaded_image = st.file_uploader("Upload label image (optional)", ["jpg", "jpeg", "png"])
+uploaded_image = st.file_uploader(
+    "Upload label image (optional)",
+    ["jpg", "jpeg", "png", "heic"]  # ✅ HEIC added
+)
 
 language_map = {
     "English": "eng",
@@ -113,19 +112,27 @@ language_choice = st.selectbox("Label language", list(language_map.keys()))
 ocr_text = ""
 
 if uploaded_image:
-    image = Image.open(uploaded_image)
-    image = ImageOps.exif_transpose(image)  # 🔑 fix orientation
+    # ✅ HEIC handling (minimal + safe)
+    if uploaded_image.name.lower().endswith(".heic"):
+        heif = pillow_heif.read_heif(uploaded_image)
+        image = Image.frombytes(
+            heif.mode,
+            heif.size,
+            heif.data,
+            "raw"
+        )
+    else:
+        image = Image.open(uploaded_image)
+
+    image = ImageOps.exif_transpose(image)
     st.image(image, use_container_width=True)
 
     if st.checkbox("Run OCR (best effort)"):
-        with st.spinner("Running OCR…"):
-            ocr_text = pytesseract.image_to_string(image),
         with st.spinner("Running OCR (trying rotations)…"):
             ocr_text = ocr_best_rotation(
                 image=image,
                 lang=language_map[language_choice]
             )
-        st.text_area("OCR result", ocr_text, height=120)
         st.text_area("OCR result", ocr_text, height=150)
 
 # --------------------------------------------------
