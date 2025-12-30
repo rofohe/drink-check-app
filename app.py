@@ -119,8 +119,7 @@ if uploaded_image:
 
     if st.checkbox("Run OCR (best effort)"):
         with st.spinner("Running OCR…"):
-            ocr_text = pytesseract.image_to_string(
-                image,
+            ocr_text = pytesseract.image_to_string(image),
         with st.spinner("Running OCR (trying rotations)…"):
             ocr_text = ocr_best_rotation(
                 image=image,
