@@ -99,7 +99,7 @@ def ocr_best_rotation(image, lang):
 beverage = st.radio("Select beverage type", ["Beer", "Wine"])
 
 # --------------------------------------------------
-# Country & language FIRST
+# Country, postal code & language
 # --------------------------------------------------
 language_map = {
     "English": "eng",
@@ -137,7 +137,7 @@ if uploaded_image:
     st.image(image, width="stretch")
 
 # --------------------------------------------------
-# OCR (BUTTON — RUNS ONCE)
+# OCR (explicit button)
 # --------------------------------------------------
 if st.session_state.image is not None:
     if st.button("Run OCR"):
@@ -185,7 +185,8 @@ location = st.text_input("Purchase location")
 # --------------------------------------------------
 st.subheader("Ratings")
 
-beer_vals = ["", "", "", ""]
+# Defaults: preserve blank columns
+beer_vals = ["", "", "", "", "", ""]
 wine_vals = ["", "", "", ""]
 
 if beverage == "Beer":
@@ -193,7 +194,9 @@ if beverage == "Beer":
         st.slider("Taste quality", 1, 7, 4),
         st.slider("Aftertaste", 1, 7, 4),
         st.slider("Carbonation quality", 1, 7, 4),
-        st.slider("Overall", 1, 7, 4)
+        st.slider("Sweet ↔ Bitter", 1, 7, 4),
+        st.slider("Session ↔ Specialty", 1, 7, 4),
+        st.slider("Overall", 1, 7, 4),
     ]
 
 if beverage == "Wine":
@@ -201,7 +204,7 @@ if beverage == "Wine":
         st.slider("Taste quality", 1, 7, 4),
         st.slider("Dry ↔ Sweet", 1, 7, 4),
         st.slider("Aftertaste", 1, 7, 4),
-        st.slider("Overall", 1, 7, 4)
+        st.slider("Overall", 1, 7, 4),
     ]
 
 # --------------------------------------------------
@@ -218,10 +221,10 @@ if st.button("Save to database"):
             if st.session_state.image:
                 image_url = upload_image_to_drive(st.session_state.image, drive)
 
-            timestamp_local = datetime.now().astimezone().isoformat()
+            timestamp = datetime.now().astimezone().isoformat()
 
             sheet.append_row([
-                timestamp_local,
+                timestamp,
                 beverage,
                 brand,
                 sortiment,
@@ -246,6 +249,7 @@ if st.button("Save to database"):
 
             st.success("Saved successfully ✅")
 
+            # Reset after save
             st.session_state.ocr_text = ""
             st.session_state.image = None
 
